@@ -1,0 +1,11 @@
+FROM gradle:jdk8 as builder
+EXPOSE 8080
+
+WORKDIR /demo
+ADD . /demo
+
+RUN gradle clean bootJar --no-daemon
+
+FROM openjdk:8-jre-alpine
+WORKDIR /demo
+COPY --from=builder /demo/build/libs/demo-0.0.1-SNAPSHOT.jar /demo/
