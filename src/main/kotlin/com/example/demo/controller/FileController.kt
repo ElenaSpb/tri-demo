@@ -26,6 +26,6 @@ class FileController (val fileProcessService: FileProcessService) {
 
     @GetMapping
     fun gett(): ResponseEntity<String> {
-        return ResponseEntity.ok().body("Hello from Lenas demo!")
+        return ResponseEntity.ok().body("Hello from Lenas demo!!!")
     }
 }
