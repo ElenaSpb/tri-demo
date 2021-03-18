@@ -26,6 +26,9 @@ dependencies {
 	implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 	implementation( "org.apache.logging.log4j:log4j-api-kotlin:1.0.0")
 
+	implementation( "org.apache.activemq:activemq-client:5.15.8")
+	implementation( "org.apache.activemq:activemq-pool:5.15.8")
+
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 
