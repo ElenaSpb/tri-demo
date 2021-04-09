@@ -1,21 +1,30 @@
 package com.example.demo.service
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.activemq.ActiveMQConnectionFactory
-import org.apache.activemq.command.ActiveMQTextMessage
 import org.apache.activemq.pool.PooledConnectionFactory
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
+import java.util.Enumeration
 import javax.annotation.PostConstruct
 import javax.jms.Connection
 import javax.jms.DeliveryMode
 import javax.jms.Destination
+import javax.jms.MapMessage
 import javax.jms.Message
+import javax.jms.MessageConsumer
+import javax.jms.MessageProducer
 import javax.jms.Queue
 import javax.jms.Session
 
 
 @Service
 class MessageService {
+
+    @Autowired
+    lateinit var objectMapper: ObjectMapper
 
     @Value("\${wireLevelEndpoint}")
     val wireLevelEndpoint: String = ""
@@ -29,6 +38,9 @@ class MessageService {
     lateinit var producerConnection: Connection
     lateinit var consumerConnection: Connection
 
+    lateinit var pooledConnectionFactory: PooledConnectionFactory
+
+    val lenasQueueName = "LenasQueue1"
 
     @PostConstruct
     fun init() {
@@ -40,14 +52,14 @@ class MessageService {
         connectionFactory.password = activeMqPassword
 
         // Create a pooled connection factory.
-        val pooledConnectionFactory = PooledConnectionFactory()
+        pooledConnectionFactory = PooledConnectionFactory()
         pooledConnectionFactory.connectionFactory = connectionFactory
         pooledConnectionFactory.maxConnections = 10
 
         // === Establish a connection for the PRODUCER.
         producerConnection = pooledConnectionFactory.createConnection()
         producerConnection.start()
-        sendMessage("LenasQueue1","Init MQ Success!!!")
+        sendMessage(lenasQueueName, "Init MQ Success!!! ${LocalDateTime.now()}")
 
         // === Establish a connection for the CONSUMER.
         consumerConnection = connectionFactory.createConnection()
@@ -80,4 +92,76 @@ class MessageService {
         consumerSession.close()
         return consumerMessage?.toString() ?: "no one message"
     }
+
+    fun getBrokerStat(): String {
+        val brokerName = "localhost"
+        val connection = pooledConnectionFactory.createConnection()
+        connection.start()
+        val session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE)
+
+//        val replyTo: Queue = session.createTemporaryQueue()
+        val replyToQueue: Queue = session.createQueue("replyToQueue1")
+        val consumer: MessageConsumer = session.createConsumer(replyToQueue)
+
+        val queueBrokerName = "ActiveMQ.Statistics.Broker"
+        val brokerQueue: Queue = session.createQueue(queueBrokerName)
+
+        val producer: MessageProducer = session.createProducer(brokerQueue)
+
+        val msg: Message = session.createMessage()
+        msg.jmsReplyTo = replyToQueue
+        producer.send(msg) // event to write stat
+
+        var answer: Message? = null
+        while(answer == null) {
+            answer = consumer.receive(1000)
+        }
+
+        val reply: MapMessage = answer as MapMessage
+        println(reply.toString())
+
+        val e: Enumeration<*> = reply.mapNames
+        while (e.hasMoreElements()) {
+            val name = e.nextElement().toString()
+            println(name + "=" + reply.getObject(name))
+        }
+
+        consumer.close()
+        producer.close()
+        session.close()
+        return reply.toString()
+    }
+
+    fun getQueueStat(queueName: String): String {
+        val session = producerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE)
+
+//        val replyToQueue: Queue = session.createTemporaryQueue()
+        val replyToQueue: Queue = session.createQueue("replyToQueue2")
+
+        val producer: MessageProducer = session.createProducer(null)
+        val consumer: MessageConsumer = session.createConsumer(replyToQueue)
+        val testQueue: Queue = session.createQueue(queueName)
+
+        val fullQueueName = "ActiveMQ.Statistics.Destination." + testQueue.queueName
+        val statQueueDestination = session.createQueue(fullQueueName)
+
+        val msg = session.createMessage()
+        msg.jmsReplyTo = replyToQueue
+
+        producer.send(testQueue, msg)
+
+        msg.jmsReplyTo = replyToQueue
+        producer.send(statQueueDestination, msg)
+
+        val reply = consumer.receive() as MapMessage
+
+        reply.mapNames
+        print(reply)
+        print(reply.mapNames)
+
+        consumer.close()
+        producer.close()
+        return reply.jmsCorrelationID
+    }
+
 }
